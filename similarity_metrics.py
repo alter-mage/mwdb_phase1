@@ -44,8 +44,10 @@ def correlation_coeff(x1, x2):
 def intersection(x1, x2):
     result = 0
     for x, y in zip(x1, x2):
+        if max(x, y) == 0:
+            continue
         result += min(x, y) / max(x, y)
-    return result/(10 ** math.ceil(math.log(abs(result))))
+    return result
 
 
 def cosine(x1, x2):

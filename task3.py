@@ -1,7 +1,14 @@
+import datetime
+import math
 import pickle
 import sys
 import os
+import time
+
 import dataset_meta_dump
+import elbp
+import hog
+import moments_of_color
 import similarity_metrics
 import heapq
 import matplotlib.pyplot as plt
@@ -12,10 +19,10 @@ def start(input_image_folder, input_image_id, model, k):
         print('Entered input image folder does not exist')
         return
 
-    pickle_path=os.path.join(input_image_folder, 'dataset_meta.pickle')
+    pickle_path='images/dataset_meta.pickle'
     while not os.path.isfile(pickle_path):
-        print('pickle not found, descriptor dump in progress')
-        dataset_meta_dump.start(pickle_path)
+        print('pickle not found, run task 0 first')
+        return
 
     with open(pickle_path, 'rb') as handle:
         image_map = pickle.load(handle)
@@ -25,32 +32,58 @@ def start(input_image_folder, input_image_id, model, k):
         return
     current_image_descriptor=image_map[input_image_id]
 
-
+    plt.imshow(
+        current_image_descriptor['image'],
+        cmap='gray'
+    )
+    plt.show()
 
     h=[]
     heapq.heapify(h)
-    for image_key in image_map:
-        if image_key!=input_image_id:
-            if model=='color_moment':
-                cm_similarity=similarity_metrics.l1_norm(current_image_descriptor['color_moment'], image_map[image_key]['color_moment'])
-                heapq.heappush(h, (-cm_similarity, image_map[image_key]['image']))
-            elif model=='elbp':
-                elbp_similarity=similarity_metrics.correlation_coeff(current_image_descriptor['elbp'], image_map[image_key]['elbp'])
-                heapq.heappush(h, (-elbp_similarity, image_map[image_key]['image']))
-            elif model=='hog':
-                hog_histogram_similarity = similarity_metrics.linf_norm(current_image_descriptor['hog']['hog_vector'],
-                                                                           image_map[image_key]['hog']['hog_vector'])
-                hog_image_similarity = similarity_metrics.cosine(current_image_descriptor['hog']['hog_image'],
-                                                                 image_map[image_key]['hog']['hog_image'])
-                hog_score=similarity_metrics.l2_norm1([hog_histogram_similarity, hog_image_similarity])
-                heapq.heappush(h, (-hog_score, image_map[image_key]['image']))
-            if len(h)>k:
-                heapq.heappop(h)
+    for filename in os.listdir(input_image_folder):
+        if filename.split('.')[-1] != 'png':
+            continue
+        image = plt.imread(os.path.join(input_image_folder, filename))
+        if model == 'color_moment':
+            cm_similarity = similarity_metrics.l1_norm(current_image_descriptor['color_moment'],
+                                                       moments_of_color.get_cm_vector(image))
+            heapq.heappush(h, (-cm_similarity, image))
+        elif model == 'elbp':
+            elbp_similarity = similarity_metrics.correlation_coeff(current_image_descriptor['elbp'],
+                                                                   elbp.get_elbp_vector(image))
+            heapq.heappush(h, (-elbp_similarity, image))
+        elif model == 'hog':
+            hog_data = hog.get_hog_vector(image)
+            hog_histogram_similarity = similarity_metrics.intersection(current_image_descriptor['hog']['hog_vector'],
+                                                                    hog_data['hog_vector'])
+            hog_image_similarity = similarity_metrics.cosine(current_image_descriptor['hog']['hog_image'],
+                                                             hog_data['hog_image'])
+            hog_scores = [hog_histogram_similarity, hog_image_similarity]
+            hog_score = similarity_metrics.l2_norm1([float(i)/sum(hog_scores) for i in hog_scores])
+            heapq.heappush(h, (-hog_score, image))
+        if len(h) > k:
+            heapq.heappop(h)
 
+    ts = time.time()
+    timestamp = datetime.datetime.fromtimestamp(ts).strftime('%H_%M_%S')
+    output_dir = os.path.join(input_image_folder, 'output_%s' % timestamp)
+    if not os.path.isdir(output_dir):
+        os.mkdir(output_dir)
+
+    fig, axs = plt.subplots(2, math.ceil(k/2))
+    counter = 0
     while h:
         current_image=heapq.heappop(h)
-        plt.imshow(current_image[1], cmap='gray')
-        plt.show()
+        axs[counter%2, counter//2].imshow(current_image[1], cmap='gray')
+        axs[counter%2, counter//2].set_title('Image score: %s' % str(-current_image[0]))
+        counter += 1
+
+        plt.imsave(
+            '%s/%s.png' % (output_dir, 'score_%s' %  str(-current_image[0])),
+            current_image[1],
+            cmap='gray'
+        )
+    plt.show()
 
 if __name__=='__main__':
     print(sys.argv)

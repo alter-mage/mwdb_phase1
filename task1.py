@@ -1,35 +1,44 @@
 import pickle
 import argparse
+import sys
+
 import matplotlib.pyplot as plt
+import datetime
+import time
+import json
 
 def start(image_id, model):
-    with open('dataset_meta.pickle', 'rb') as handle:
+    with open('images/dataset_meta.pickle', 'rb') as handle:
         image_map = pickle.load(handle)
+    if image_id not in image_map:
+        print('invalid image ID, please check')
+        return
+    ts = time.time()
+    timestamp = datetime.datetime.fromtimestamp(ts).strftime('%H_%M_%S')
+    dump_file = '%s_%s_%s.json' % (image_id, model, timestamp)
     if model=='color_moment':
-        plt.subplot(1, 2, 1)
-        plt.imshow(image_map[image_id]['image'], cmap='gray')
-        plt.show()
+        with open(dump_file, 'w+') as f:
+            json.dump({
+                'data': image_map[image_id]['color_moment'].tolist()
+            }, f)
     elif model=='elbp':
-        pass
+        with open(dump_file, 'w+') as f:
+            json.dump({
+                'data': image_map[image_id]['elbp'].tolist()
+            }, f)
     elif model=='hog':
-        pass
+        hog_data = image_map[image_id]['hog']
+        plt.imshow(hog_data['hog_image'], cmap='gray')
+        plt.show()
+        with open(dump_file, 'w+') as f:
+            json.dump({
+                'data': hog_data['hog_vector'].tolist()
+            }, f)
     else:
         print('model not available')
 
 
 if __name__=='__main__':
-    parser = argparse.ArgumentParser(description='Task 1')
-    parser.add_argument(
-        '-i',
-        dest='image_id',
-        help='image id',
-        required=True
-    )
-    parser.add_argument(
-        '-m',
-        dest='model',
-        help='model name as color_moment, elbp and hog',
-        required=True
-    )
-    args=parser.parse_args()
-    start(args.image_id, args.model)
+    image_id = sys.argv[1]
+    model = sys.argv[2]
+    start(image_id, model)
